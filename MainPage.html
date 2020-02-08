@@ -1,0 +1,449 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Multiple Cameras (Three.js)</title>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    <link rel="stylesheet" href="css/base.css" />
+</head>
+<body>
+    <script src="js/Three.js"></script>
+    <script src="js/Detector.js"></script>
+    <script src="js/Stats.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="js/THREEx.KeyboardState.js"></script>
+    <script src="js/THREEx.FullScreen.js"></script>
+    <script src="js/THREEx.WindowResize.js"></script>
+
+    <!-- jQuery code to display an information button and box when clicked. -->
+    <script src="js/jquery-1.9.1.js"></script>
+    <script src="js/jquery-ui.js"></script>
+    <link rel="stylesheet" href="css/jquery-ui.css" />
+    <link rel="stylesheet" href="css/info.css" />
+    <script src="js/info.js"></script>
+    <div id="infoButton"></div>
+    <div id="infoBox" title="Demo Information">
+        Press '1' for chase camera, '2' for top camera. <br />
+        Movement controls: <br />
+        <ul>
+            <li>W/S: Translate Forward/Backward</li>
+            <li>A/D: Rotate Left/Right</li>
+            <li>Q/E: Translate Left/Right</li>
+            <li>R/F: Rotate Up/Down</li>
+            <li>Z: Reset position and rotation.</li>
+        </ul>
+
+        This three.js demo is part of a collection at
+        <a href="http://stemkoski.github.io/Three.js/">http://stemkoski.github.io/Three.js/</a>
+    </div>
+    <!-- ------------------------------------------------------------ -->
+
+    <div id="ThreeJS" style="position: absolute; left:0px; top:0px"></div>
+    <script>
+      /*
+        	Three.js "tutorials by example"
+        	Author: Lee Stemkoski
+        	Date: July 2013 (three.js v59dev)
+        */
+
+      // MAIN
+
+      // standard global variables
+      var container, scene, renderer, controls, stats;
+      var keyboard = new THREEx.KeyboardState();
+      var clock = new THREE.Clock();
+      var sphereTable = [];
+      var light,
+        lightbulb,
+        spotlight,
+        spotlightBulb,
+        movingLight,
+        movingLightBulb;
+      var skyBox;
+
+      // custom global variables
+      var MovingCube;
+      var chaseCamera, topCamera, followCamera;
+      var chaseCameraActive = false,
+        topCameraActive = true,
+        folllowCameraActive = false;
+      var flatShading = false,
+        PhonShading = true,
+        GouroudShading = false;
+      var isDay = true;
+
+      init();
+      animate();
+
+      // FUNCTIONS
+      function init() {
+        // SCENE
+        scene = new THREE.Scene();
+        // CAMERA
+        var SCREEN_WIDTH = window.innerWidth,
+          SCREEN_HEIGHT = window.innerHeight;
+        var VIEW_ANGLE = 45,
+          ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT,
+          NEAR = 0.1,
+          FAR = 20000;
+        // camera 1
+        topCamera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+        scene.add(topCamera);
+        topCamera.position.set(0, 200, 550);
+        topCamera.lookAt(scene.position);
+        // camera 2
+        chaseCamera = new THREE.PerspectiveCamera(
+          VIEW_ANGLE,
+          ASPECT,
+          NEAR,
+          FAR
+        );
+        scene.add(chaseCamera);
+        //camera 3
+        followCamera = new THREE.PerspectiveCamera(
+          VIEW_ANGLE,
+          ASPECT,
+          NEAR,
+          FAR
+        );
+
+        scene.add(followCamera);
+        followCamera.lookAt(scene.position);
+        followCamera.position.set(0, 200, 550);
+        // RENDERER
+        if (Detector.webgl)
+          renderer = new THREE.WebGLRenderer({ antialias: true });
+        else renderer = new THREE.CanvasRenderer();
+        renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+        container = document.getElementById("ThreeJS");
+        container.appendChild(renderer.domElement);
+        // EVENTS
+        THREEx.WindowResize(renderer, topCamera);
+        THREEx.WindowResize(renderer, followCamera);
+        THREEx.FullScreen.bindKey({ charCode: "m".charCodeAt(0) });
+
+        // CONTROLS
+        // MUST REMOVE THIS LINE FOR THIS DEMO.
+        // controls = ...
+
+        // STATS
+        stats = new Stats();
+        stats.domElement.style.position = "absolute";
+        stats.domElement.style.bottom = "0px";
+        stats.domElement.style.zIndex = 100;
+        container.appendChild(stats.domElement);
+        // LIGHT
+        light = new THREE.PointLight(0xffffff);
+        light.position.set(1000, 1000, 1000);
+        scene.add(light);
+        lightbulb = new THREE.Mesh(
+          new THREE.SphereGeometry(10, 16, 8),
+          new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+        );
+        scene.add(lightbulb);
+        lightbulb.position = light.position;
+        // FLOOR
+        var floorTexture = new THREE.ImageUtils.loadTexture(
+          "images/checkerboard.jpg"
+        );
+        floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
+        floorTexture.repeat.set(10, 10);
+        // Note the change to Lambert material.
+        var floorMaterial = new THREE.MeshLambertMaterial({
+          map: floorTexture,
+          side: THREE.DoubleSide
+        });
+        var floorGeometry = new THREE.PlaneGeometry(1000, 1000, 100, 100);
+        var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.position.y = -0.5;
+        floor.rotation.x = Math.PI / 2;
+        // Note the mesh is flagged to receive shadows
+        floor.receiveShadow = true;
+        scene.add(floor);
+        // SKYBOX/FOG
+        var skyBoxGeometry = new THREE.CubeGeometry(10000, 10000, 10000);
+        var skyBoxMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          side: THREE.BackSide
+        });
+        skyBox = new THREE.Mesh(skyBoxGeometry, skyBoxMaterial);
+        scene.add(skyBox);
+        //scene.fog = new THREE.FogExp2(0x9999ff, 0.00025);
+
+        ////////////
+        // CUSTOM //
+        ////////////
+
+        var cubeGeometry = new THREE.CubeGeometry(50, 50, 50, 1, 1, 1);
+        var crateTexture = new THREE.ImageUtils.loadTexture("images/crate.gif");
+        var crateMaterial = new THREE.MeshLambertMaterial({
+          map: crateTexture
+        });
+        MovingCube = new THREE.Mesh(cubeGeometry.clone(), crateMaterial);
+        MovingCube.position.set(0, 25, 0);
+        MovingCube.castShadow = false;
+        scene.add(MovingCube);
+        //LIGHT ABOVE
+        movingLight = new THREE.PointLight(0xffffff);
+        //movingLight.shadowCameraVisible = true;
+        //movingLight.shadowDarkness = 0.95;
+        movingLight.intensity = 0;
+        movingLight.position.set(0, 40, 0);
+        scene.add(movingLight);
+        movingLightBulb = new THREE.Mesh(
+          new THREE.SphereGeometry(10, 16, 8),
+          new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+        );
+        scene.add(movingLightBulb);
+        movingLightBulb.position = movingLight.position;
+        movingLightBulb.visible = false;
+
+        // a little bit of scenery...
+
+        //var ambientlight = new THREE.AmbientLight(0x111111);
+        //scene.add(ambientlight);
+
+        //SpotLight
+        spotlight = new THREE.SpotLight(0xffffff);
+        spotlight.position.set(-60, 150, -30);
+        spotlight.shadowCameraVisible = true;
+        spotlight.shadowDarkness = 0.95;
+        spotlight.intensity = 2;
+        // must enable shadow casting ability for the light
+        spotlight.castShadow = true;
+        scene.add(spotlight);
+        //lightBall
+        var sphereGeometry = new THREE.SphereGeometry(10, 16, 8);
+        var darkMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+        var wireframeMaterial = new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          wireframe: true,
+          transparent: true
+        });
+        spotlightBulb = THREE.SceneUtils.createMultiMaterialObject(
+          sphereGeometry,
+          [darkMaterial, wireframeMaterial]
+        );
+        spotlightBulb.position = spotlight.position;
+        scene.add(spotlightBulb);
+
+        var wireMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          wireframe: true,
+          transparent: true
+        });
+
+        ChangeSphere();
+        MakeDay();
+      }
+
+      function MakeDay() {
+        scene.remove(spotlightBulb);
+        scene.add(lightbulb);
+
+        spotlight.intensity = 0;
+        light.intensity = 1;
+      }
+
+      function MakeNight() {
+        scene.remove(lightbulb);
+        scene.add(spotlightBulb);
+
+        spotlight.intensity = 1;
+        light.intensity = 0;
+      }
+
+      function ChangeSphere() {
+        sphereTable.forEach(x => {
+          scene.remove(x);
+        });
+
+        var sphereGeom = new THREE.SphereGeometry(40, 10, 10);
+        var colors = [
+          0x00ff00,
+          0x00ff00,
+          0x00ff00,
+          0xffff00,
+          0xffff00,
+          0xffff00,
+          0xff0000,
+          0xff0000,
+          0xff0000
+        ];
+        for (var i = 0; i < 9; i++) {
+          var sphere;
+
+          if (flatShading) {
+            var material1 = new THREE.MeshBasicMaterial({
+              color: colors[i]
+            });
+            var sphere = new THREE.Mesh(sphereGeom.clone(), material1);
+            sphere.position.set(-400 + i * 100, 40, -300);
+          } else if (GouroudShading) {
+            var material2 = new THREE.MeshLambertMaterial({
+              color: colors[i]
+            });
+
+            var sphere = new THREE.Mesh(sphereGeom.clone(), material2);
+            sphere.position.set(-400 + i * 100, 40, -300);
+          } else {
+            var material3 = new THREE.MeshPhongMaterial({
+              color: colors[i]
+            });
+
+            var sphere = new THREE.Mesh(sphereGeom.clone(), material3);
+            sphere.position.set(-400 + i * 100, 40, -300);
+          }
+
+          sphereTable.push(sphere);
+          scene.add(sphere);
+        }
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        render();
+        update();
+      }
+
+      function update() {
+        var delta = clock.getDelta(); // seconds.
+        var moveDistance = 200 * delta; // 200 pixels per second
+        var rotateAngle = (Math.PI / 2) * delta; // pi/2 radians (90 degrees) per second
+
+        // move forwards/backwards/left/right
+        if (keyboard.pressed("W")) {
+          MovingCube.translateZ(-moveDistance);
+        }
+        if (keyboard.pressed("S")) {
+          MovingCube.translateZ(moveDistance);
+        }
+        if (keyboard.pressed("Q")) {
+          MovingCube.translateX(-moveDistance);
+        }
+        if (keyboard.pressed("E")) {
+          MovingCube.translateX(moveDistance);
+        }
+
+        // rotate left/right/up/down
+        var rotation_matrix = new THREE.Matrix4().identity();
+        if (keyboard.pressed("A")) {
+          MovingCube.rotateOnAxis(new THREE.Vector3(0, 1, 0), rotateAngle);
+        }
+        if (keyboard.pressed("D")) {
+          MovingCube.rotateOnAxis(new THREE.Vector3(0, 1, 0), -rotateAngle);
+        }
+        if (keyboard.pressed("R")) {
+          MovingCube.rotateOnAxis(new THREE.Vector3(1, 0, 0), rotateAngle);
+        }
+        if (keyboard.pressed("F")) {
+          MovingCube.rotateOnAxis(new THREE.Vector3(1, 0, 0), -rotateAngle);
+        }
+
+        movingLight.position.set(
+          MovingCube.position.x,
+          MovingCube.position.y + 40,
+          MovingCube.position.z
+        );
+
+        movingLightBulb.position = movingLight.position;
+
+        if (keyboard.pressed("N")) {
+          isDay = !isDay;
+          if (isDay) {
+            MakeDay();
+
+            var skyBoxMaterial = new THREE.MeshBasicMaterial({
+              color: 0xffffff,
+              side: THREE.BackSide
+            });
+          } else {
+            var skyBoxMaterial = new THREE.MeshBasicMaterial({
+              color: 0x000000,
+              side: THREE.BackSide
+            });
+            MakeNight();
+          }
+
+          scene.remove(skyBox);
+          var skyBoxGeometry = new THREE.CubeGeometry(10000, 10000, 10000);
+          skyBox = new THREE.Mesh(skyBoxGeometry, skyBoxMaterial);
+          scene.add(skyBox);
+        }
+        if (keyboard.pressed("L")) {
+          if (movingLight.intensity == 0) {
+            movingLight.intensity = 0.3;
+            movingLightBulb.visible = true;
+          } else {
+            movingLight.intensity = 0;
+            movingLightBulb.visible = false;
+          }
+        }
+
+        var relativeCameraOffset = new THREE.Vector3(0, 50, 200);
+
+        var cameraOffset = relativeCameraOffset.applyMatrix4(
+          MovingCube.matrixWorld
+        );
+
+        chaseCamera.position.x = cameraOffset.x;
+        chaseCamera.position.y = cameraOffset.y;
+        chaseCamera.position.z = cameraOffset.z;
+        chaseCamera.lookAt(MovingCube.position);
+
+        followCamera.lookAt(MovingCube.position);
+
+        //camera.updateMatrix();
+        //camera.updateProjectionMatrix();
+
+        if (keyboard.pressed("1")) {
+          chaseCameraActive = true;
+          topCameraActive = false;
+          followCameraActive = false;
+        }
+        if (keyboard.pressed("2")) {
+          chaseCameraActive = false;
+          topCameraActive = true;
+          followCameraActive = false;
+        }
+        if (keyboard.pressed("3")) {
+          chaseCameraActive = false;
+          topCameraActive = false;
+          followCameraActive = true;
+        }
+        if (keyboard.pressed("7")) {
+          flatShading = false;
+          GouroudShading = false;
+          PhonShading = true;
+          ChangeSphere();
+        }
+        if (keyboard.pressed("8")) {
+          flatShading = false;
+          GouroudShading = true;
+          PhonShading = false;
+          ChangeSphere();
+        }
+        if (keyboard.pressed("9")) {
+          flatShading = true;
+          GouroudShading = false;
+          PhonShading = false;
+          ChangeSphere();
+        }
+
+        stats.update();
+      }
+
+      function render() {
+        if (chaseCameraActive) {
+          renderer.render(scene, chaseCamera);
+        } else if (topCameraActive) {
+          renderer.render(scene, topCamera);
+        } else {
+          renderer.render(scene, followCamera);
+        }
+      }
+    </script>
+</body>
+</html>
